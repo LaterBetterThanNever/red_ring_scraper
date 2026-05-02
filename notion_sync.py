@@ -422,7 +422,7 @@ def build_github_url_map(article_dir: str) -> dict:
 
     github_token = config.get("github_token", "")
     github_owner = config.get("github_owner", "")
-    github_repo = config.get("github_repo", "red-ring-images")
+    github_repo = config.get("github_repo", "red_ring_scraper")
     github_branch = config.get("github_branch", "main")
 
     if not github_token or not github_owner:

@@ -48,73 +48,55 @@ fi
 
 echo "[1/3] 爬取完成!"
 
-# ============ 步骤 2: 上传图片到 GitHub ============
+# ============ 步骤 2: 推送到 GitHub ============
 if [ "$TEST_MODE" = true ]; then
     echo ""
-    echo "[2/3] 测试模式，跳过 GitHub 上传"
+    echo "[2/3] 测试模式，跳过 GitHub 推送"
 else
     echo ""
-    echo "[2/3] 上传图片到 GitHub..."
-    python3 -c "
-import json, os, sys
-from github_uploader import GitHubUploader
+    echo "[2/3] 推送到 GitHub..."
 
-config_path = os.path.join('$SCRIPT_DIR', 'config.json')
-with open(config_path, 'r', encoding='utf-8') as f:
-    config = json.load(f)
+    # 读取 GitHub Token 和用户名
+    GITHUB_TOKEN=$(python3 -c "
+import json
+with open('$SCRIPT_DIR/config.json') as f:
+    c = json.load(f)
+print(c.get('github_token', ''))
+")
+    GITHUB_OWNER=$(python3 -c "
+import json
+with open('$SCRIPT_DIR/config.json') as f:
+    c = json.load(f)
+print(c.get('github_owner', ''))
+")
+    GITHUB_REPO=$(python3 -c "
+import json
+with open('$SCRIPT_DIR/config.json') as f:
+    c = json.load(f)
+print(c.get('github_repo', 'red_ring_scraper'))
+")
 
-github_token = config.get('github_token', '')
-github_owner = config.get('github_owner', '')
-github_repo = config.get('github_repo', 'red-ring-images')
-github_branch = config.get('github_branch', 'main')
+    if [ -z "$GITHUB_TOKEN" ] || echo "$GITHUB_TOKEN" | grep -q '填入'; then
+        echo 'WARNING: GitHub Token 未配置，跳过推送'
+    else
+        # 使用 HTTPS + Token 方式推送（兼容 cron 定时任务，无需 SSH 密码）
+        PUSH_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_OWNER}/${GITHUB_REPO}.git"
 
-if not github_token or '填入' in github_token:
-    print('WARNING: GitHub Token 未配置，跳过上传')
-    sys.exit(0)
+        # git add 所有文章内容
+        git add articles/ .gitignore
+        git add -u  # 移除已删除的文件
 
-if not github_owner or '填入' in github_owner:
-    print('WARNING: GitHub 用户名未配置，跳过上传')
-    sys.exit(0)
+        # 检查是否有变更需要提交
+        if git diff --cached --quiet; then
+            echo '没有新的变更需要推送'
+        else
+            git commit -m "每日更新: $DATE_ARG 文章"
+            git push "$PUSH_URL" main
+            echo "已推送到 GitHub: ${GITHUB_OWNER}/${GITHUB_REPO}"
+        fi
+    fi
 
-uploader = GitHubUploader(github_token, github_owner, github_repo, github_branch)
-
-# 确保仓库存在
-try:
-    uploader.get_repo_info()
-    print(f'仓库已存在: {github_owner}/{github_repo}')
-except:
-    try:
-        uploader.create_repo(private=True)
-        print(f'已创建仓库: {github_owner}/{github_repo}')
-    except Exception as e:
-        print(f'创建仓库失败: {e}')
-        sys.exit(1)
-
-# 上传指定日期目录下的所有文章图片
-date_str = '$DATE_ARG'
-articles_dir = os.path.join('$SCRIPT_DIR', 'articles', date_str)
-if not os.path.isdir(articles_dir):
-    print(f'目录不存在: {articles_dir}')
-    sys.exit(0)
-
-total_images = 0
-for article_name in sorted(os.listdir(articles_dir)):
-    article_dir = os.path.join(articles_dir, article_name)
-    if not os.path.isdir(article_dir):
-        continue
-    images_dir = os.path.join(article_dir, 'images')
-    if not os.path.isdir(images_dir):
-        continue
-    images = [f for f in os.listdir(images_dir) if not f.startswith('.')]
-    if not images:
-        continue
-    print(f'上传文章图片: {article_name} ({len(images)} 张)')
-    url_map = uploader.upload_article(article_dir, date_str)
-    total_images += len(url_map)
-
-print(f'共上传 {total_images} 张图片到 GitHub')
-"
-    echo "[2/3] GitHub 上传完成!"
+    echo "[2/3] GitHub 推送完成!"
 fi
 
 # ============ 步骤 3: 同步到 Notion ============
