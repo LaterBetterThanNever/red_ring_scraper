@@ -1,0 +1,14 @@
+{
+  "access_token": "",
+  "api_base": "https://api.redringvip.com/api",
+  "cookie": "",
+  "group_id": 27593,
+  "plate_id": 1,
+  "page_size": 20,
+  "yyyymm": "",
+  "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  "download_images": true,
+  "download_attachments": false,
+  "include_comments": false,
+  "max_comments_per_article": 50
+}
