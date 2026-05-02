@@ -56,44 +56,23 @@ else
     echo ""
     echo "[2/3] 推送到 GitHub..."
 
-    # 读取 GitHub Token 和用户名
-    GITHUB_TOKEN=$(python3 -c "
-import json
-with open('$SCRIPT_DIR/config.json') as f:
-    c = json.load(f)
-print(c.get('github_token', ''))
-")
-    GITHUB_OWNER=$(python3 -c "
-import json
-with open('$SCRIPT_DIR/config.json') as f:
-    c = json.load(f)
-print(c.get('github_owner', ''))
-")
-    GITHUB_REPO=$(python3 -c "
-import json
-with open('$SCRIPT_DIR/config.json') as f:
-    c = json.load(f)
-print(c.get('github_repo', 'red_ring_scraper'))
-")
+    # 启动 SSH agent 并从 Keychain 加载密钥（cron 环境下需要）
+    if [ -z "$SSH_AUTH_SOCK" ]; then
+        eval "$(ssh-agent -s)" 2>/dev/null
+        ssh-add --apple-use-keychain ~/.ssh/id_ed25519_github 2>/dev/null || true
+    fi
 
-    if [ -z "$GITHUB_TOKEN" ] || echo "$GITHUB_TOKEN" | grep -q '填入'; then
-        echo 'WARNING: GitHub Token 未配置，跳过推送'
+    # git add 所有文章内容
+    git add articles/ .gitignore
+    git add -u  # 移除已删除的文件
+
+    # 检查是否有变更需要提交
+    if git diff --cached --quiet; then
+        echo '没有新的变更需要推送'
     else
-        # 使用 HTTPS + Token 方式推送（兼容 cron 定时任务，无需 SSH 密码）
-        PUSH_URL="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_OWNER}/${GITHUB_REPO}.git"
-
-        # git add 所有文章内容
-        git add articles/ .gitignore
-        git add -u  # 移除已删除的文件
-
-        # 检查是否有变更需要提交
-        if git diff --cached --quiet; then
-            echo '没有新的变更需要推送'
-        else
-            git commit -m "每日更新: $DATE_ARG 文章"
-            git push "$PUSH_URL" main
-            echo "已推送到 GitHub: ${GITHUB_OWNER}/${GITHUB_REPO}"
-        fi
+        git commit -m "每日更新: $DATE_ARG 文章"
+        git push origin main
+        echo '已推送到 GitHub'
     fi
 
     echo "[2/3] GitHub 推送完成!"

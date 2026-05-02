@@ -18,14 +18,21 @@ from pathlib import Path
 from datetime import datetime
 
 # ============ 配置 ============
+# 从 config.json 读取敏感配置，不硬编码 token
+_config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+_config = {}
+if os.path.exists(_config_path):
+    with open(_config_path, "r", encoding="utf-8") as _f:
+        _config = json.load(_f)
+
 NOTION_TOKEN = os.environ.get(
     "NOTION_TOKEN",
-    "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"
+    _config.get("notion_token", "")
 )
 # Notion 数据库 ID
 NOTION_DATABASE_ID = os.environ.get(
     "NOTION_DATABASE_ID",
-    "353ff2ba-0bbc-806b-9d63-c617cc35e96c"
+    _config.get("notion_database_id", "")
 )
 
 NOTION_API = "https://api.notion.com/v1"
