@@ -18,22 +18,20 @@ from pathlib import Path
 from datetime import datetime
 
 # ============ 配置 ============
-# 从 config.json 读取敏感配置，不硬编码 token
-_config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+import sys; sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+import env_loader
+
+# 非敏感配置(可选)
+_config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'config.json')
 _config = {}
 if os.path.exists(_config_path):
-    with open(_config_path, "r", encoding="utf-8") as _f:
+    with open(_config_path, 'r', encoding='utf-8') as _f:
         _config = json.load(_f)
 
-NOTION_TOKEN = os.environ.get(
-    "NOTION_TOKEN",
-    _config.get("notion_token", "")
-)
-# Notion 数据库 ID
-NOTION_DATABASE_ID = os.environ.get(
-    "NOTION_DATABASE_ID",
-    _config.get("notion_database_id", "")
-)
+import env_loader
+
+NOTION_TOKEN = env_loader.get("NOTION_TOKEN")
+NOTION_DATABASE_ID = env_loader.get("NOTION_DATABASE_ID")
 
 NOTION_API = "https://api.notion.com/v1"
 NOTION_VERSION = "2022-06-28"
@@ -420,17 +418,19 @@ def build_github_url_map(article_dir: str) -> dict:
     from github_uploader import GitHubUploader
     import json
 
-    config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+    config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'config.json')
     if not os.path.exists(config_path):
         return {}
 
     with open(config_path, "r", encoding="utf-8") as f:
         config = json.load(f)
 
-    github_token = config.get("github_token", "")
-    github_owner = config.get("github_owner", "")
-    github_repo = config.get("github_repo", "red_ring_scraper")
-    github_branch = config.get("github_branch", "main")
+    import env_loader
+
+    github_token = env_loader.get("GITHUB_TOKEN")
+    github_owner = env_loader.get("GITHUB_OWNER")
+    github_repo = env_loader.get("GITHUB_REPO", "red_ring_scraper")
+    github_branch = env_loader.get("GITHUB_BRANCH", "main")
 
     if not github_token or not github_owner:
         return {}
@@ -439,7 +439,7 @@ def build_github_url_map(article_dir: str) -> dict:
 
     # 计算 repo 路径
     # article_dir 类似 /path/to/articles/2026-05-02/my-article
-    articles_base = os.path.join(os.path.dirname(os.path.abspath(__file__)), "articles")
+    articles_base = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'articles')
     rel_dir = os.path.relpath(article_dir, articles_base)
     # rel_dir 类似 2026-05-02/my-article
 

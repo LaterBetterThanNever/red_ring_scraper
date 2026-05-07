@@ -25,8 +25,8 @@ BASE_URL = "https://www.red-ring.cn"
 DEFAULT_API_BASE = "https://api.redringvip.com/api"
 GROUP_ID = 27593  # 圈子 ID（URL 里的 gid），与 plate_id（板块 tab，多为 1）不同
 DEFAULT_PLATE_ID = 1  # 默认「全部」等板块，见前端 /content/plate/get；勿把 group_id 当成 plate_id
-CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config.json")
-OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "articles")
+CONFIG_FILE = os.path.join(os.path.dirname(__file__), "..", "config.json")
+OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "articles")
 LOG_FILE = os.path.join(os.path.dirname(__file__), "scraper.log")
 RECORD_FILE = os.path.join(os.path.dirname(__file__), "scraped_ids.json")
 
@@ -100,12 +100,14 @@ class RedRingScraper:
             "Accept": "application/json, text/plain, */*",
             "Origin": BASE_URL,
         }
-        token = (config.get("access_token") or config.get("accessToken") or "").strip()
+        import sys; sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+        import env_loader
+        token = (env_loader.get("REDRING_ACCESS_TOKEN") or config.get("access_token") or config.get("accessToken") or "").strip()
         if token and "复制" not in token:
             # 与浏览器一致：站点同时发送 access_token 与 accesstoken
             headers["access_token"] = token
             headers["accesstoken"] = token
-        cookie = (config.get("cookie") or "").strip()
+        cookie = (env_loader.get("REDRING_COOKIE") or config.get("cookie") or "").strip()
         if cookie and "粘贴" not in cookie:
             headers["Cookie"] = cookie
         self.session.headers.update(headers)

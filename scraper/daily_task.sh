@@ -16,9 +16,10 @@
 
 set -e
 
-# 脚本所在目录
+# 脚本所在目录(项目根目录)
+PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-cd "$SCRIPT_DIR"
+cd "$PROJECT_DIR"
 
 # 默认日期（今天）
 DATE_ARG="${1:-$(date +%Y-%m-%d)}"
@@ -39,11 +40,11 @@ echo ""
 echo "[1/3] 爬取小红圈文章..."
 
 if [ "$1" = "--all" ]; then
-    python3 scraper.py --all --comments
+    python3 scraper/scraper.py --all --comments
 elif [ "$1" = "--test" ]; then
-    python3 scraper.py --date "$DATE_ARG" --comments
+    python3 scraper/scraper.py --date "$DATE_ARG" --comments
 else
-    python3 scraper.py --date "$DATE_ARG" --comments
+    python3 scraper/scraper.py --date "$DATE_ARG" --comments
 fi
 
 echo "[1/3] 爬取完成!"
@@ -85,7 +86,7 @@ if [ "$TEST_MODE" = true ]; then
 else
     echo ""
     echo "[3/3] 同步文章到 Notion..."
-    python3 notion_sync.py "articles/$DATE_ARG"
+    python3 scraper/notion_sync.py "articles/$DATE_ARG"
     echo "[3/3] Notion 同步完成!"
 fi
 

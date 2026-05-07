@@ -224,11 +224,12 @@ class GitHubUploader:
         return f"https://raw.githubusercontent.com/{self.owner}/{self.repo}/{self.branch}/{repo_path}"
 
 
-def create_uploader_from_config(config: dict) -> GitHubUploader:
-    """从配置字典创建 GitHubUploader 实例"""
+def create_uploader_from_config(config: dict = None) -> GitHubUploader:
+    """从环境变量创建 GitHubUploader 实例"""
+    import env_loader
     return GitHubUploader(
-        token=config.get("github_token", ""),
-        owner=config.get("github_owner", ""),
-        repo=config.get("github_repo", "red-ring-images"),
-        branch=config.get("github_branch", "main"),
+        token=env_loader.get("GITHUB_TOKEN"),
+        owner=env_loader.get("GITHUB_OWNER"),
+        repo=env_loader.get("GITHUB_REPO", "red_ring_scraper"),
+        branch=env_loader.get("GITHUB_BRANCH", "main"),
     )

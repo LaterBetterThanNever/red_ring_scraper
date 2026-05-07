@@ -1,9 +1,10 @@
-# 敏感配置文件（含 token）
-config.json
+# 敏感凭证（含 token / secret）
+.env
 
 # 运行时数据
 scraped_ids.json
 scraper.log
+stock_sync.log
 
 # Python
 __pycache__/
