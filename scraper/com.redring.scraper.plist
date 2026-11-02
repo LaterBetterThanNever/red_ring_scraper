@@ -8,21 +8,29 @@
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>/Users/shenwuyue/Documents/Code Projects/red_ring_scraper/daily_scrape.sh</string>
+        <string>/Users/shenwuyue/Documents/Code/red_ring_scraper/scraper/daily_task.sh</string>
     </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>HOME</key>
+        <string>/Users/shenwuyue</string>
+    </dict>
 
     <key>StartCalendarInterval</key>
     <dict>
         <key>Hour</key>
-        <integer>8</integer>
+        <integer>19</integer>
         <key>Minute</key>
         <integer>0</integer>
     </dict>
 
     <key>StandardOutPath</key>
-    <string>/Users/shenwuyue/Documents/Code Projects/red_ring_scraper/cron.log</string>
+    <string>/Users/shenwuyue/Documents/Code/red_ring_scraper/daily_task.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/shenwuyue/Documents/Code Projects/red_ring_scraper/cron.log</string>
+    <string>/Users/shenwuyue/Documents/Code/red_ring_scraper/daily_task.log</string>
 
     <key>RunAtLoad</key>
     <false/>

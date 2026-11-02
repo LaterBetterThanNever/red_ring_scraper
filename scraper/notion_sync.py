@@ -57,8 +57,9 @@ if os.path.exists(_stock_mapping_path):
 STOCK_NICKNAMES = _stock_mapping.get("nicknames", {})
 INDUSTRY_KEYWORDS = _stock_mapping.get("industries", [])
 
-# 需要跳过的文章类型关键词（出现在正文开头前几行即判定）
-SKIP_KEYWORDS = ["有声版", "风险提示"]
+# 需要跳过的文章类型关键词（出现在标题或正文开头即判定）
+# 有声版/风险提示 = 非正文；运营规则/自荐书 = 圈子置顶公告，对复盘无价值
+SKIP_KEYWORDS = ["有声版", "风险提示", "运营规则", "自荐书"]
 
 
 # ============ 智能分析函数 ============
@@ -307,6 +308,7 @@ def md_to_notion_blocks(md_text: str, github_url_map: dict = None) -> list:
 
         # 普通段落
         para_lines = []
+        start = i
         while i < len(lines):
             l = lines[i].strip()
             if (not l or l.startswith("#") or l.startswith(">") or l.startswith("- ")
@@ -316,6 +318,11 @@ def md_to_notion_blocks(md_text: str, github_url_map: dict = None) -> list:
                     or re.match(r'^\d+\.\s+', l)):
                 break
             para_lines.append(l)
+            i += 1
+        if i == start:
+            # 该行不匹配上面任何规则（例如孤零零一个 "#"），
+            # 按普通段落输出，否则 i 不前进会死循环
+            para_lines = [lines[i].strip()]
             i += 1
         if para_lines:
             blocks.append({
@@ -417,6 +424,39 @@ def parse_md_file(filepath: str) -> dict:
 
 
 # ============ 同步到 Notion ============
+
+_EXISTING_INDEX = None
+
+
+def load_existing_index(refresh: bool = False) -> dict:
+    """已入库页面索引 {(日期, 标题): page_id}，用于防止批量补录产生重复条目。"""
+    global _EXISTING_INDEX
+    if _EXISTING_INDEX is not None and not refresh:
+        return _EXISTING_INDEX
+
+    index = {}
+    start_cursor = None
+    while True:
+        params = {"page_size": 100}
+        if start_cursor:
+            params["start_cursor"] = start_cursor
+        result = notion_post(f"databases/{NOTION_DATABASE_ID}/query", params)
+        for page in result.get("results", []):
+            props = page.get("properties", {})
+            page_title = "".join(
+                t.get("plain_text", "") for t in props.get("Title", {}).get("title", [])
+            )
+            page_date = (props.get("Date", {}).get("date") or {}).get("start", "")
+            if page_title:
+                index[(page_date[:10], page_title)] = page["id"]
+        if not result.get("has_more"):
+            break
+        start_cursor = result.get("next_cursor")
+
+    _EXISTING_INDEX = index
+    logger.info(f"Notion 库已有 {len(index)} 篇，作为去重基准")
+    return index
+
 
 def create_notion_page(title: str, date_str: str, parent_db_id: str,
                        mentioned_stocks: list = None, tags: list = None) -> str:
@@ -553,6 +593,10 @@ def sync_one_article(filepath: str, github_url_map: dict = None):
     logger.info(f"  标题: {smart_title}")
     logger.info(f"  内容: {len(blocks)} blocks")
 
+    if load_existing_index().get((date_str[:10], smart_title[:100])):
+        logger.info(f"  已存在于 Notion，跳过以避免重复")
+        return None
+
     # 创建 Notion 数据库页面（带标的和Tag）
     try:
         page_id = create_notion_page(
@@ -560,6 +604,7 @@ def sync_one_article(filepath: str, github_url_map: dict = None):
             mentioned_stocks=mentioned_stocks if mentioned_stocks else None,
             tags=all_tags if all_tags else None,
         )
+        _EXISTING_INDEX[(date_str[:10], smart_title[:100])] = page_id
     except Exception as e:
         logger.error(f"创建页面失败: {e}")
         return None
@@ -581,16 +626,13 @@ def sync_directory(dirpath: str):
         logger.warning(f"目录下没有 .md 文件: {dirpath}")
         return
 
-    # 过滤掉非文章目录下的 .md 文件
-    article_mds = []
-    for md in md_files:
-        # 文章目录结构: dirpath/article-name/article-name.md
-        parent = md.parent
-        if parent.name and md.name.startswith(parent.name.split("_", 1)[-1][:10] if "_" in parent.name else parent.name[:10]):
-            article_mds.append(md)
+    # 文章正文的约定：articles/<日期>/<名称>/<名称>.md
+    # 只认这种结构，避免把目录里的说明性 .md 当文章上传
+    article_mds = [md for md in md_files if md.name == md.parent.name + ".md"]
 
     if not article_mds:
-        article_mds = md_files
+        logger.warning(f"未找到符合命名约定的文章文件: {dirpath}")
+        return
 
     logger.info(f"找到 {len(article_mds)} 篇文章待同步")
     for md_file in article_mds:

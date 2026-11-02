@@ -1,11 +1,17 @@
 """
 小红圈文章爬虫 - 每日抓取文章并保存为 .md 文件
-使用方法:
+
+【令牌机制】小红圈采用双令牌：
+- access_token（短期，易过期，过期后接口返回 status=9 请登录）
+- refresh_token（长期，用于自动换取新的 access_token）
+本脚本会在 access_token 失效时，自动调用 /refreshtoken 接口刷新，并回写 .env。
+
+【首次配置】（只需做一次，之后长期自动续期）
 1. 在浏览器登录 https://www.red-ring.cn
-2. 打开开发者工具 Network → 筛选 Fetch/XHR，找到请求域名为 api.redringvip.com 的接口
-3. 在 Request Headers 中复制 access_token（与浏览器一致可同时配 accesstoken，脚本会同步设置）
-4. 将 access_token 写入 config.json（见仓库内 config 示例）；Cookie 为可选（跨域 API 往往不带 Cookie）
-5. 运行: python scraper.py
+2. 打开开发者工具 Application → Local Storage → https://www.red-ring.cn
+3. 复制 accessToken 和 refreshToken 两个值
+4. 写入 .env：REDRING_ACCESS_TOKEN=xxx 与 REDRING_REFRESH_TOKEN=xxx
+5. 运行：python scraper.py（access_token 过期会自动刷新，无需再手动复制）
 """
 
 import requests
@@ -25,6 +31,7 @@ BASE_URL = "https://www.red-ring.cn"
 DEFAULT_API_BASE = "https://api.redringvip.com/api"
 GROUP_ID = 27593  # 圈子 ID（URL 里的 gid），与 plate_id（板块 tab，多为 1）不同
 DEFAULT_PLATE_ID = 1  # 默认「全部」等板块，见前端 /content/plate/get；勿把 group_id 当成 plate_id
+REFRESH_ENDPOINT = "refreshtoken"  # POST {refresh_token} -> 返回新的 access_token / refresh_token
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "..", "config.json")
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "..", "articles")
 LOG_FILE = os.path.join(os.path.dirname(__file__), "scraper.log")
@@ -102,11 +109,16 @@ class RedRingScraper:
         }
         import sys; sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
         import env_loader
+        self._env_loader = env_loader
         token = (env_loader.get("REDRING_ACCESS_TOKEN") or config.get("access_token") or config.get("accessToken") or "").strip()
         if token and "复制" not in token:
             # 与浏览器一致：站点同时发送 access_token 与 accesstoken
             headers["access_token"] = token
             headers["accesstoken"] = token
+        # refresh_token：长期令牌，access_token 过期时用它自动换新
+        self.refresh_token = (env_loader.get("REDRING_REFRESH_TOKEN") or config.get("refresh_token") or "").strip()
+        self._refreshing = False  # 防止刷新时递归
+        self.auth_failed = False  # 令牌失效标记，供定时任务判断本轮是否真的取到数据
         cookie = (env_loader.get("REDRING_COOKIE") or config.get("cookie") or "").strip()
         if cookie and "粘贴" not in cookie:
             headers["Cookie"] = cookie
@@ -123,7 +135,8 @@ class RedRingScraper:
         self.scraped_ids = load_scraped_ids()
         if not token and not cookie:
             logger.error(
-                "config.json 未配置 access_token 或 cookie；跨域 API 一般只需从 Network 复制 access_token"
+                "未配置 access_token（也无 cookie）：请在 .env 填写 REDRING_ACCESS_TOKEN，"
+                "并强烈建议同时填写 REDRING_REFRESH_TOKEN 以支持自动续期。"
             )
             raise SystemExit(1)
 
@@ -152,19 +165,74 @@ class RedRingScraper:
                 return None
         return data_field
 
+    @staticmethod
+    def _needs_refresh(data: dict) -> bool:
+        """判断接口响应是否因 access_token 过期而要求登录。"""
+        if not data:
+            return False
+        info = (data.get("info") or data.get("message") or "").strip()
+        return "请登录" in info or str(data.get("status")) == "9"
+
+    def refresh_access_token(self) -> bool:
+        """用 refresh_token 换取新的 access_token，成功后更新请求头并回写 .env。"""
+        if not self.refresh_token:
+            logger.error(
+                "access_token 已过期，且未配置 REDRING_REFRESH_TOKEN，无法自动刷新。"
+                "请在浏览器 Application → Local Storage 中复制 refreshToken 写入 .env。"
+            )
+            return False
+        try:
+            url = f"{self.api_base}/{REFRESH_ENDPOINT}"
+            resp = self.session.post(url, json={"refresh_token": self.refresh_token}, timeout=30)
+            resp.raise_for_status()
+            data = resp.json()
+            if not self._api_ok(data):
+                logger.error(f"刷新 access_token 失败: {data.get('info') or data}")
+                return False
+            body = self._unwrap_data_field(data.get("data")) or {}
+            new_access = (body.get("access_token") or "").strip()
+            new_refresh = (body.get("refresh_token") or "").strip()
+            if not new_access:
+                logger.error("刷新接口未返回新的 access_token")
+                return False
+            # 更新请求头
+            self.session.headers["access_token"] = new_access
+            self.session.headers["accesstoken"] = new_access
+            # 回写 .env 持久化
+            self._env_loader.set_var("REDRING_ACCESS_TOKEN", new_access)
+            if new_refresh:
+                self.refresh_token = new_refresh
+                self._env_loader.set_var("REDRING_REFRESH_TOKEN", new_refresh)
+            logger.info("✓ access_token 已自动刷新并回写 .env")
+            return True
+        except requests.RequestException as e:
+            logger.error(f"刷新 access_token 请求异常: {e}")
+            return False
+
     def _api_get(self, endpoint: str, params: dict = None) -> dict:
-        """调用 API GET 请求"""
+        """调用 API GET 请求（access_token 过期时自动刷新并重试一次）"""
         url = f"{self.api_base}/{endpoint}"
         try:
             resp = self.session.get(url, params=params, timeout=30)
             resp.raise_for_status()
             data = resp.json()
-            info = (data.get("info") or data.get("message") or "").strip()
-            if "请登录" in info or str(data.get("status")) == "9":
+            # access_token 过期：尝试用 refresh_token 自动刷新后重试
+            if self._needs_refresh(data) and not self._refreshing:
+                logger.warning("access_token 已过期，正在尝试自动刷新...")
+                self._refreshing = True
+                try:
+                    refreshed = self.refresh_access_token()
+                finally:
+                    self._refreshing = False
+                if refreshed:
+                    resp = self.session.get(url, params=params, timeout=30)
+                    resp.raise_for_status()
+                    data = resp.json()
+            if self._needs_refresh(data):
+                self.auth_failed = True
                 logger.error(
-                    "API 要求登录：请在 config.json 填写有效的 access_token（"
-                    "Network 里 **api.redringvip.com** 请求的 Request Headers 中，与浏览器一致可同时需要 "
-                    "access_token / accesstoken；跨域请求通常没有 Cookie 属正常）。"
+                    "API 仍要求登录：refresh_token 可能也已失效。"
+                    "请重新登录小红圈，从 Local Storage 复制新的 accessToken/refreshToken 写入 .env。"
                 )
             elif not self._api_ok(data):
                 logger.warning(f"API 返回异常: {url} -> {data}")
@@ -637,7 +705,7 @@ content_id: {content_id}{image_urls_yaml}
         logger.info(f"本次抓取完成，新增 {new_count} 篇文章")
 
     def scrape_all(self):
-        """一次性爬取所有文章（从第一页开始，直到没有新文章）"""
+        """一次性爬取所有文章（从最新页一直翻到空页为止）"""
         logger.info(
             f"开始一次性爬取圈子 gid={self.group_id}, plate_id={self.plate_id} 的所有文章..."
         )
@@ -653,7 +721,6 @@ content_id: {content_id}{image_urls_yaml}
                 logger.info("本页无内容，停止翻页")
                 break
 
-            all_old = True
             for item in articles:
                 cid = str(item.get("contentId") or item.get("cid") or item.get("id", ""))
                 if not cid:
@@ -663,7 +730,6 @@ content_id: {content_id}{image_urls_yaml}
                     logger.info(f"文章 {cid} 已抓取过，跳过")
                     continue
 
-                all_old = False
                 # 获取文章详情
                 detail = self.get_article_detail(int(cid))
                 if detail:
@@ -682,14 +748,13 @@ content_id: {content_id}{image_urls_yaml}
                 # 请求间隔，避免被封
                 time.sleep(2)
 
-            if all_old:
-                logger.info("本页所有文章均已抓取过，停止")
-                break
-
+            # total_page 是随翻页递减的估算值，不能用来判断结束（会提前截断历史），
+            # 只能翻到空页为止；all_old 同样不能提前停，否则中间有已爬段落时
+            # 会漏掉更早的历史文章。
             list_index += 1
             last_time = next_last
-            if total_page is not None and list_index > int(total_page):
-                logger.info("已到最后一页")
+            if list_index > 200:
+                logger.info("达到翻页上限，停止")
                 break
 
             time.sleep(3)
@@ -909,8 +974,12 @@ def main():
         scraper.scrape_latest(max_pages=args.pages)
 
     # 爬取完成后，如果指定了 --notion，自动同步到 Notion
-    if args.notion:
+    if args.notion and not scraper.auth_failed:
         _sync_to_notion(args)
+
+    if scraper.auth_failed:
+        logger.error("本轮未能取到数据：小红圈令牌已失效，需要重新登录并更新 .env")
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
