@@ -5,6 +5,9 @@
 scraped_ids.json
 scraper.log
 stock_sync.log
+daily_task.log
+backfill_scrape.log
+.last_run_failure
 
 # Python
 __pycache__/
