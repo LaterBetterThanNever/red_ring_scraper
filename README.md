@@ -58,19 +58,24 @@ python3 scraper.py --date 2026-04-01 --comments --attachments
 ### 第 4 步：设置每日自动运行（macOS 推荐 launchd）
 
 ```bash
-# 将 plist 文件复制到 LaunchAgents 目录
-cp "/Users/shenwuyue/Documents/Code Projects/red_ring_scraper/com.redring.scraper.plist" ~/Library/LaunchAgents/
+# 将 plist 复制到 LaunchAgents 目录
+cp "/Users/shenwuyue/Projects/red_ring_scraper/scraper/com.redring.scraper.plist" ~/Library/LaunchAgents/
 
-# 加载定时任务（每天早上 8:00 自动运行）
-launchctl load ~/Library/LaunchAgents/com.redring.scraper.plist
+# 加载定时任务（每天 19:00 自动运行，回溯补齐最近 7 天）
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.redring.scraper.plist
 ```
 
-停止定时任务：`launchctl unload ~/Library/LaunchAgents/com.redring.scraper.plist`
+停止定时任务：`launchctl bootout gui/$(id -u)/com.redring.scraper`
+
+手动触发一次（验证配置是否真的能跑）：`launchctl kickstart -k gui/$(id -u)/com.redring.scraper`
+
+日志：`/Users/shenwuyue/Projects/red_ring_scraper/daily_task.log`
 
 ## 注意事项
 
-- **Cookie 会过期**，如果爬取失败，需要重新登录获取新 Cookie
-- 脚本会自动记录已爬取的文章 ID（`scraped_ids.json`），避免重复抓取
-- 每次请求间隔 2-3 秒，防止被封
-- 由于这是付费社群平台，API 接口的具体字段名可能需要根据实际响应微调，建议先用 `--single 1919853` 测试单篇抓取
+- **令牌自动续期**：小红圈用 `access_token`（短期）+ `refresh_token`（长期）双令牌。access_token 过期时脚本会自动调用 `/refreshtoken` 刷新并回写 `.env`。首次需在浏览器 `F12 → Application → Local Storage` 复制 `accessToken` / `refreshToken` 写入 `.env`（`REDRING_ACCESS_TOKEN` / `REDRING_REFRESH_TOKEN`）。此后长期无需手动更新。
+- 若日志提示「refresh_token 也已失效」，重新登录小红圈后再复制一次即可。
+- 脚本会自动记录已爬取的文章 ID（`scraped_ids.json`），避免重复抓取。
+- 每次请求间隔 2-3 秒，防止被封。
+- **持仓同步已迁移**：本项目现为纯文章爬虫；股票持仓的 Notion 同步已并入 `ziye-leekfund` 扩展，原脚本归档在 `legacy_portfolio/`。
 

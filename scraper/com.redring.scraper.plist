@@ -8,7 +8,7 @@
     <key>ProgramArguments</key>
     <array>
         <string>/bin/bash</string>
-        <string>/Users/shenwuyue/Documents/Code/red_ring_scraper/scraper/daily_task.sh</string>
+        <string>/Users/shenwuyue/Projects/red_ring_scraper/scraper/daily_task.sh</string>
     </array>
 
     <key>EnvironmentVariables</key>
@@ -28,9 +28,9 @@
     </dict>
 
     <key>StandardOutPath</key>
-    <string>/Users/shenwuyue/Documents/Code/red_ring_scraper/daily_task.log</string>
+    <string>/Users/shenwuyue/Projects/red_ring_scraper/daily_task.log</string>
     <key>StandardErrorPath</key>
-    <string>/Users/shenwuyue/Documents/Code/red_ring_scraper/daily_task.log</string>
+    <string>/Users/shenwuyue/Projects/red_ring_scraper/daily_task.log</string>
 
     <key>RunAtLoad</key>
     <false/>

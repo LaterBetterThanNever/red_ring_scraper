@@ -94,8 +94,9 @@ if [ -z "$SSH_AUTH_SOCK" ]; then
     ssh-add --apple-use-keychain ~/.ssh/id_ed25519_github 2>/dev/null || true
 fi
 
+# 只提交 articles/：仓库里还有未相关的手工改动，不能把它们扫进"每日更新"提交
 git add articles/ .gitignore 2>/dev/null
-git add -u 2>/dev/null
+git add -u articles/ 2>/dev/null
 
 if git diff --cached --quiet; then
     echo '没有新的变更需要推送'
